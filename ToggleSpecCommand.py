@@ -1,5 +1,7 @@
 import sublime, sublime_plugin
 import re, os
+import subprocess
+from functools import reduce
 
 class ToggleSpecCommand(sublime_plugin.TextCommand):
     def run(self, edit):
@@ -94,7 +96,32 @@ class ToggleSpecCommand(sublime_plugin.TextCommand):
 
         raise NoMatchingFileFoundException(match_string)
 
+
     def first_project_file_matching(self, match_string, match_dirname):
+        try:
+            return self.find_native(match_string)
+        except subprocess.CalledProcessError as error:
+            return self.find_with_python(match_string, match_dirname)
+
+    def find_native(self, match_string):
+        project_path = self.window.extract_variables()['folder']
+        file_path_array = self.file_name.split('/')
+
+        shell_output = subprocess.check_output("find '%s' -regex '.*%s'" % (project_path, match_string), shell=True, stderr=subprocess.STDOUT)
+        results = str(shell_output.decode("utf-8")).strip().split("\n")
+
+        def score_paths(resultpath):
+            resultpath_array = resultpath.strip().split('/')
+            return (resultpath, reduce(score_path, resultpath_array, 0))
+
+        def score_path(x, y):
+            return x + int(y in file_path_array)
+
+        paths = dict(map(score_paths, results))
+        sorted_paths = sorted(paths.items(), key=operator.itemgetter(1), reverse=True)
+        return sorted_paths[0][0]
+
+    def find_with_python(self, match_string, match_dirname):
         folders = self.window.folders()
         for folder in folders:
             return self.first_file_matching_in_folder(folder, match_string, match_dirname)
