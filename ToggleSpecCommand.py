@@ -1,6 +1,7 @@
 import sublime, sublime_plugin
 import re, os
 import subprocess
+import operator
 from functools import reduce
 
 class ToggleSpecCommand(sublime_plugin.TextCommand):
@@ -12,6 +13,9 @@ class ToggleSpecCommand(sublime_plugin.TextCommand):
                 self.window.open_file(self.test_under_file)
         except NoMatchingFileFoundException as e:
             sublime.status_message(e.message)
+
+    def regex(self):
+        return ".?spec"
 
     @property
     def folder_exclude_patterns(self):
@@ -39,7 +43,7 @@ class ToggleSpecCommand(sublime_plugin.TextCommand):
     @property
     def file_under_test(self):
         dirname, basename = self.dirname_and_basename(self.file_name)
-        basename = re.sub(r"[_-]spec", "", basename, 1)
+        basename = re.sub(self.regex(), "", basename, 1)
         return self.first_file_matching(basename, dirname)
 
     @property
@@ -56,12 +60,12 @@ class ToggleSpecCommand(sublime_plugin.TextCommand):
 
     @property
     def is_spec(self):
-        return re.search("spec", self.file_name)
+        return re.search(self.regex(), self.file_name)
 
     @property
     def test_under_file(self):
         dirname, basename = self.dirname_and_basename(self.file_name)
-        basename = basename.replace(".", "[_-]spec.", 1)
+        basename = basename.replace(".", self.regex() + ".", 1)
         return self.first_file_matching(basename, dirname)
 
     @property
@@ -107,6 +111,8 @@ class ToggleSpecCommand(sublime_plugin.TextCommand):
         project_path = self.window.extract_variables()['folder']
         file_path_array = self.file_name.split('/')
 
+        match_string = match_string.replace('?', '*') # to work with find most basic regex
+
         shell_output = subprocess.check_output("find '%s' -regex '.*%s'" % (project_path, match_string), shell=True, stderr=subprocess.STDOUT)
         results = str(shell_output.decode("utf-8")).strip().split("\n")
 
@@ -137,10 +143,11 @@ class ToggleSpecCommand(sublime_plugin.TextCommand):
 
     def first_open_file_matching(self, match_string, match_dirname):
         secondary_match = None
+        regex = re.compile(match_string, re.IGNORECASE)
 
         for file_name in self.open_file_names:
             dirname, basename = self.dirname_and_basename(file_name)
-            if re.search(match_string, basename):
+            if re.search(regex, basename):
                 if dirname == match_dirname:
                     return file_name
                 secondary_match = file_name
